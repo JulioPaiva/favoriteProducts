@@ -5,7 +5,13 @@ module.exports = (app) => {
     return app.db('users').select(['id', 'name', 'mail']);
   }
 
-  const findOne = (filter = {}) => app.db('users').where(filter).first();
+  const findOne = async (filter = {}) => {
+    let user = await app.db('users').where(filter).first();
+
+    user.products = await app.db('products').where({ user_id: user.id }).select('id', 'product_id');
+
+    return user;
+  };
 
   const save = async (user) => {
     if (!user.name) throw new ValidationError('Nome é um atributo obrigatório!');

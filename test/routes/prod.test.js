@@ -3,21 +3,19 @@ const jwt = require('jwt-simple');
 const app = require('../../src/app');
 
 const MAIN_ROUTE = '/v1/products';
-let user;
-let list;
+let user, id_prod;
 
 beforeAll(async () => {
-  const res = await app.services.user.save({ name: 'User List', mail: `${Date.now()}@mail.com` });
+  const res = await app.services.user.save({ name: 'User', mail: `${Date.now()}@mail.com` });
   user = { ...res[0] };
   user.token = jwt.encode(user, process.env.SECRET);
 
-  const res2 = await app.services.list.save({ user_id: user.id, date: `${new Date()}` });
-  list = { ...res2[0] }
+  id_prod = await supertest('http://challenge-api.luizalabs.com').get('/api/product/?page=1');
 });
 
-test('Devo salvar produto em uma lista', () => {
+test('Devo salvar um produto', () => {
   return supertest(app).post(MAIN_ROUTE)
-    .send({ list_id: list.id, product_id: 'ee9fc710-8876-c40c-7862-275e237d84a4' })
+    .send({ user_id: user.id, product_id: id_prod.body.products[0].id })
     .set('authorization', `bearer ${user.token}`)
     .then((res) => {
       expect(res.status).toBe(201);
@@ -25,9 +23,10 @@ test('Devo salvar produto em uma lista', () => {
 });
 
 test('Não devo salvar produto repetido', () => {
-  return supertest(app).post(MAIN_ROUTE)
-    .send({ list_id: 35, product_id: '1bf0f365-fbdd-4e21-9786-da459d78dd1f' })
-    .set('authorization', `bearer ${user.token}`)
+  return app.db('products').insert({ user_id: user.id, product_id: id_prod.body.products[0].id })
+    .then(() => supertest(app).post(MAIN_ROUTE)
+      .send({ user_id: user.id, product_id: id_prod.body.products[0].id })
+      .set('authorization', `bearer ${user.token}`))
     .then((res) => {
       expect(res.status).toBe(400);
       expect(res.body.error).toBe('A lista já contém o produto!');
@@ -36,7 +35,7 @@ test('Não devo salvar produto repetido', () => {
 
 test('Não devo salvar produto inexistente', () => {
   return supertest(app).post(MAIN_ROUTE)
-    .send({ list_id: 35, product_id: '83ee6f6-c3af-3d63-4b1d-bb42d33692bf' })
+    .send({ user_id: user.id, product_id: '83ee6f6-c3af-3d63-4b1d-bb42d33692bf' })
     .set('authorization', `bearer ${user.token}`)
     .then((res) => {
       expect(res.status).toBe(400);
@@ -46,7 +45,7 @@ test('Não devo salvar produto inexistente', () => {
 
 test('Deve remover um produto', () => {
   return app.db('products')
-    .insert({ list_id: list.id, product_id: '1bf0f365-fbdd-4e21-9786-da459d78dd1f', date: new Date() }, ['id'])
+    .insert({ user_id: user.id, product_id: id_prod.body.products[0].id }, ['id'])
     .then((res) => supertest(app).delete(`${MAIN_ROUTE}/${res[0].id}`)
       .set('authorization', `bearer ${user.token}`)
       .then((res) => {
